@@ -20,6 +20,8 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 
 //тут фотки как подключить
 
+![port](https://raw.githubusercontent.com/kevinlekiller/linux_intel_monitor_overclocking/images/find_port.png)
+
 20200215_023012.jpg
 
 20200215_023037.jpg
