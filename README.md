@@ -1,7 +1,7 @@
 # asus_rog_ext
 Asus ROG_EXT Fron panel protocol
 
-# Вступление
+## Вступление
 
 Был у меня реобас от асуса, Asus Rog Front Panel как на картинке asus_rog_front_base_dual-bay_gaming_panel_3d.jpg
 Шло время, я сменил материнку, и как-то на него забил, так как на новой материнской плате нет такого разъема.
@@ -31,7 +31,7 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 методом тыка и перебора, были вычленены нужные команды
 
 
-# Описание
+## Описание
 
     enum COMMANDTYPE : uint8_t{
         READ = 1,
