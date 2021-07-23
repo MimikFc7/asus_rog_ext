@@ -3,7 +3,10 @@ Asus ROG_EXT Fron panel protocol
 
 ### Вступление
 
-Был у меня реобас от асуса, Asus Rog Front Panel как на картинке asus_rog_front_base_dual-bay_gaming_panel_3d.jpg
+Был у меня реобас от асуса, Asus Rog Front Panel как на картинке 
+![port](https://github.com/MimikFc7/asus_rog_ext/blob/main/asus_rog_front_base_dual-bay_gaming_panel_3d.jpg)
+
+asus_rog_front_base_dual-bay_gaming_panel_3d.jpg
 Шло время, я сменил материнку, и как-то на него забил, так как на новой материнской плате нет такого разъема.
 
 Недавно наткнулся на него и решил прикрутить, так как я чаще сижу в Linux, была сделана попытка спросить у асуса как это подключить
