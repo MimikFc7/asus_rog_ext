@@ -21,10 +21,9 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 //тут фотки как подключить
 
 ![port](https://github.com/MimikFc7/asus_rog_ext/blob/main/20200215_023012.jpg)
+![port](https://github.com/MimikFc7/asus_rog_ext/blob/main/20200215_023037.jpg)
 
-20200215_023012.jpg
 
-20200215_023037.jpg
 
 Дальше было интересно, устройство определилось, но как с ним работать, было не ясно. 
 
