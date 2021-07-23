@@ -33,8 +33,7 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 
 # Описание
 
-`
-enum ADDRESS_TYPE : uint8_t{
+`enum ADDRESS_TYPE : uint8_t{
     DISPLAY_ON_OF = 10,
     DISPLAY_BOTTOM_LINE_ICONS = 96,
     CPU_TEMP = 32,
@@ -58,7 +57,5 @@ struct ROG_PACKET{
     uint8_t value2 = 0; //всегда 0xff пока не понял что там, можно передавать 0, не критично
     uint8_t value3 = 0; //всегда 0xff пока не понял что там, можно передавать 0, не критично
     uint8_t value4 = 0; //всегда 0xff пока не понял что там, можно передавать 0, не критично  
-} __attribute__((packed));
-
-`
+} __attribute__((packed));`
 
