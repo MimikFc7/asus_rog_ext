@@ -40,16 +40,16 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
     CPU_RPM = 64,
     CPU_FREQ = 49, //cpu freq надо делить на  16000 в мегагерцах с точкой
     TIME = 80 //время бется на 2 байта часы и минуты, 0x1233 = 12:33 по умолчанию формат 12 часовой, но по кнопке переключается на 24
-};
+};`
 
-enum COMMANDTYPE : uint8_t{
+`enum COMMANDTYPE : uint8_t{
   READ = 1,
   WRITE = 2,
   GET_VERSION = 16
-};
+};`
 
 
-struct ROG_PACKET{
+`struct ROG_PACKET{
     uint8_t senderaddr = 1; // так как это i2c нужен адрес кому возвращать, но в данном случае тут пофигу что писать, но из декомпила я применил 1
     COMMANDTYPE command2 = READ; // тип команд, чтение, запись, запрос версии
     ADDRESS_TYPE  address = CPU_TEMP; //адрес читаемой или записываемой ячеки
