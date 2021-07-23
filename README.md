@@ -18,6 +18,7 @@ Asus ROG_EXT Fron panel protocol
 //тут фотки как подключить
 
 20200215_023012.jpg
+
 20200215_023037.jpg
 
 
