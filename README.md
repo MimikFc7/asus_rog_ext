@@ -33,12 +33,11 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 
 # Описание
 
-enum COMMANDTYPE : uint8_t{
-    READ = 1,
-    WRITE = 2,
-    GET_VERSION = 16
-};
-
+    enum COMMANDTYPE : uint8_t{
+        READ = 1,
+        WRITE = 2,
+        GET_VERSION = 16
+    };
 
     struct DISPLAYICONS{
         unsigned FICTION:1;
@@ -52,13 +51,11 @@ enum COMMANDTYPE : uint8_t{
         operator int() const{ return ( FICTION << 0) |  (SPORT << 1  ) |  (RACING << 2  ) |  (SHOOTING << 3  ) |  (MUSIC << 4  ) ; }
     } __attribute__((packed));
 
-
     struct CURRENTTIME {
         uint8_t hour;
         uint8_t min;
         operator int() const{ return ( hour << 0) |  (min << 8 ) ; }
     } __attribute__((packed));
-
 
     struct DISPLAYFLAGS{
         unsigned ON:1;
@@ -82,7 +79,6 @@ enum COMMANDTYPE : uint8_t{
         CPU_FREQ = 49, //cpu freq надо делить на  16000 в мегагерцах с точкой //странно но снва все изменилось теперь делитель 2,5 вероятно где-то есть настройка делимости
         TIME = 80 //время бется на 2 байта часы и минуты, 0x1233 = 12:33 по умолчанию формат 12 часовой, но по кнопке переключается на 24
     };
-
 
     struct ROG_PACKET{
         uint8_t command1 = 1;
