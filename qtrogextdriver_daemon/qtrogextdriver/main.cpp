@@ -96,12 +96,8 @@ struct ROG_PACKET{
 } __attribute__((packed));
 
 
-
-
-
 static void handler(int s) {
     syslog (LOG_NOTICE, " qtrogextdriver called: SIGQUIT");
-
     if(usbhandler != nullptr){
         usbhandler->stop();
         delete usbhandler;
@@ -110,7 +106,7 @@ static void handler(int s) {
             libusb_close(asusRogBaseUsbDevice);
         }
     }
-      exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 }
 
 static void skeleton_daemon()
@@ -144,11 +140,6 @@ static void skeleton_daemon()
     umask(0);
     chdir("/");
 
-    int x;
-    for (x = sysconf(_SC_OPEN_MAX); x>=0; x--){
-        close (x);
-    }
-
     signal(SIGQUIT, handler);
     signal(SIGSTOP, handler);
     signal(SIGTERM, handler);
@@ -181,8 +172,17 @@ void writeCommand( ADDRESS_TYPE command, uint16_t value, libusb_device_handle *d
     packet->value = value;
     memcpy(lpReportBuffer1, packet,8);
 
-    writeData(devhandler,lpReportBuffer1);
-    readData(devhandler,lpReportBuffer1);
+    int usb_state = -10000;
+
+    usb_state =  writeData(devhandler,lpReportBuffer1);
+    if(usb_state < 0){
+        exit(1);
+    }
+    usb_state = -10000;
+    usb_state = readData(devhandler,lpReportBuffer1);
+    if(usb_state < 0){
+        exit(1);
+    }
     delete packet;
     delete []  lpReportBuffer1;
 }
@@ -202,10 +202,7 @@ long readFileValue(QString file_path){
 int main(int argc, char *argv[])
 {
 
-
     syslog (LOG_ERR, " qtrogextdriver called start or stop ");
-
-
     if(strcmp(argv[1], "stop") == 0){
 
         if(usbhandler != nullptr){
@@ -221,35 +218,16 @@ int main(int argc, char *argv[])
     skeleton_daemon();
 
     QCoreApplication a(argc, argv);
+    if(argc > 1)
+    {
+        if(strcmp(argv[1], "start") == 0)
+        {
+            libusb_init(nullptr);
+                    asusRogBaseUsbDevice = libusb_open_device_with_vid_pid(nullptr,0x1770,0xef35); //libusb_open(dev,&asusRogBaseUsbDevice);
 
-
-    if(argc > 1){
-        if(strcmp(argv[1], "start") == 0){
-        usbhandler = new QTimer();
-
-        libusb_context * ctx = nullptr;
-        libusb_init(&ctx);
-
-        libusb_device **list = nullptr;
-
-        if(list != nullptr){
-            libusb_free_device_list(list,0);
-        }
-
-        ssize_t count = libusb_get_device_list(nullptr,&list);
-
-
-        for(int i = 0; i < count; i++){
-            libusb_device *dev = list[i];
-            libusb_device_descriptor desc = {0};
-            if(dev != nullptr) {
-                int rc = libusb_get_device_descriptor(dev, &desc);
-                if(rc == 0){
-
-                    if((int)desc.idVendor == 0x1770 && (int)desc.idProduct == 0xef35){
-                        int usbset = libusb_open(dev,&asusRogBaseUsbDevice);
-                        libusb_reset_device(asusRogBaseUsbDevice);
-                        if( usbset == LIBUSB_SUCCESS){
+                    if( asusRogBaseUsbDevice != nullptr){
+                        syslog (LOG_NOTICE, " qtrogextdriver found usb device");
+                            libusb_reset_device(asusRogBaseUsbDevice);
                             if( libusb_kernel_driver_active(asusRogBaseUsbDevice,0) ){
                                 libusb_detach_kernel_driver(asusRogBaseUsbDevice,0);
                             }
@@ -257,6 +235,8 @@ int main(int argc, char *argv[])
                             libusb_set_configuration(asusRogBaseUsbDevice,0);
                             libusb_clear_halt(asusRogBaseUsbDevice,0x03);
                             libusb_clear_halt(asusRogBaseUsbDevice,0x82);
+
+                            usbhandler = new QTimer();
                             usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
 
                             writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
@@ -290,22 +270,18 @@ int main(int argc, char *argv[])
 
                             writeCommand(TIME,(uint16_t)time,asusRogBaseUsbDevice);
 
-
                         });
 
                         usbhandler->setInterval(10000);
                         usbhandler->start();
 
-
+                    }else{
+                            syslog (LOG_NOTICE, " qtrogextdriver LIBUSB_ERROR open usb device");
                     }
                 }
 
-            }
-    }
-    }
-        }
-    }
 
+    }
 
     return a.exec();
 }
