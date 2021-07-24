@@ -1,0 +1,19 @@
+[Unit]
+Description=Qt Asus RogExt driver
+
+[Install]
+WantedBy=multi-user.target
+Alias=qtrogextdriver.service
+Alias=qtrogextdriver.service
+
+
+[Service]
+Type=oneshot
+User=root
+PrivateDevices=false
+ProtectSystem=false
+MountFlags=shared
+GuessMainPID=no
+RemainAfterExit=true
+ExecStart=/home/programs/system/qtrogextdriver start
+ExecStop=/home/programs/system/qtrogextdriver stop
