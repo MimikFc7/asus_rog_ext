@@ -49,8 +49,22 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
     ExecStop=/home/programs/system/qtrogextdriver stop
     
     /home/programs/system/qtrogextdriver - путь до сервиса после компиляции
+    
+### Необходимые утилиты
+* lm_sensors qmake gcc g++ 
 
 ### Описание
+
+       #define CPU_FREQ_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" 
+       Путь до вывода текущей частоты процессора (вероятно этот путь может быть другим)
+       
+       #define CPU_TEMP_PATH "/sys/devices/platform/coretemp.0/hwmon/hwmon3/temp1_input"
+       Путь до вывода текущей температуры процессора (вероятно этот путь может быть другим)
+       
+       #define CPU_RPM_PATH "/sys/class/hwmon/hwmon4/fan1_input"
+       Путь до вывода текущей скорости куллера процессора (вероятно этот путь может быть другим)
+       
+       #define CPU_RPM_MAX 3000
 
     enum COMMANDTYPE : uint8_t{
         READ = 1,
