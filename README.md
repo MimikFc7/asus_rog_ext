@@ -43,6 +43,10 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
        Для статики придется собрать много либ в статику и залинковать их, если будет такая нужда, пишите в Issues - помогу.
 * 2. Простой режим, качаем динамическую QT 5.11 и выше и либу libusb 1.0, собственно все.
 
+       для сборки динамики ( по замечанию, opachgi )
+       qmake qtrogextdriver.pro
+       make
+
 ### Установка
     Для установки, надо в systemd установить файлик qtrogextdriver.service предваритель отредактировав, указать путь расположения файла
     ExecStart=/home/programs/system/qtrogextdriver start
