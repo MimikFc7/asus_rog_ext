@@ -229,7 +229,7 @@ long readFileValue(QString file_path){
 int main(int argc, char *argv[])
 {
 
-   /* syslog (LOG_ERR, " qtrogextdriver called start or stop ");
+    syslog (LOG_ERR, " qtrogextdriver called start or stop ");
     if(strcmp(argv[1], "stop") == 0){
 
         if(usbhandler != nullptr){
@@ -240,16 +240,16 @@ int main(int argc, char *argv[])
                 libusb_close(asusRogBaseUsbDevice);
             }
         }
-    }*/
+    }
 
-   // skeleton_daemon();
+    skeleton_daemon();
 
     QLoggingCategory::setFilterRules("*.debug=true");
 
     QCoreApplication a(argc, argv);
-    //if(argc > 1)
+    if(argc > 1)
     {
-        //if(strcmp(argv[1], "start") == 0)
+        if(strcmp(argv[1], "start") == 0)
         {
             libusb_init(nullptr);
                     asusRogBaseUsbDevice = libusb_open_device_with_vid_pid(nullptr,0x1770,0xef35); //libusb_open(dev,&asusRogBaseUsbDevice);
@@ -318,12 +318,8 @@ int main(int argc, char *argv[])
                             writeCommand(CHA_RPM_PERC3,((num * 100)/  CPU_RPM_MAX) / 10,asusRogBaseUsbDevice);
                             // Конец только nvidia
 
-
-
-
                             num= (readFileValue(CPU_FREQ_PATH) / 1000);
                             writeCommand(CPU_FREQ,num,asusRogBaseUsbDevice, true);
-
 
                             DISPLAYICONS showAllIcons;
                             showAllIcons.MUSIC = 1;
@@ -336,7 +332,6 @@ int main(int argc, char *argv[])
                             showAllIcons.icon7 = 1;
 
                             writeCommand(DISPLAY_BOTTOM_LINE_ICONS,(uint8_t)showAllIcons,asusRogBaseUsbDevice, false);
-
 
                             CURRENTTIME time;
                             time.hour =  QDateTime::currentDateTime().time().hour() ;
