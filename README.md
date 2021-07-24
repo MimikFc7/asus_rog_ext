@@ -102,15 +102,15 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
     } __attribute__((packed));
 
     enum ADDRESS_TYPE : uint8_t{
-        INIT = 1, //сброс, принимает знаения, но не понятно в одном случае загорается USB во втором нет (переключение режима? )
-        DISPLAY_ON_OF = 10, битовые режимы DISPLAYFLAGS 
-        DISPLAY_BOTTOM_LINE_ICONS = 96, // битовая маска DISPLAYICONS
+        INIT = 1,                         //сброс, принимает знаения, но не понятно в одном случае загорается USB во втором нет (переключение режима? )
+        DISPLAY_ON_OF = 10,               //битовые режимы DISPLAYFLAGS 
+        DISPLAY_BOTTOM_LINE_ICONS = 96,   // битовая маска DISPLAYICONS
         CPU_TEMP = 32,
         CPU_RPM = 64,
-        CPU_RPM_PERC = 74, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
-        CPU_SCALETYPE = 48, // 0 (не понятно) 1 - делитель 10, 40000 / 10 = 4 Ghz, вариантов много 10 самый удобный (0x0a00)
-        CPU_FREQ = 49, //cpu freq надо делить на  делитель CPU_SCALETYPE
-        TIME = 80 //время бется на 2 байта часы и минуты, 0x0d21 = 13:33 по умолчанию формат 12 часовой, но по кнопке переключается на 24
+        CPU_RPM_PERC = 74,                //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
+        CPU_SCALETYPE = 48,               // 0 (не понятно) 1 - делитель 10, 40000 / 10 = 4 Ghz, вариантов много 10 самый удобный (0x0a00)
+        CPU_FREQ = 49,                    //cpu freq надо делить на  делитель CPU_SCALETYPE
+        TIME = 80                         //время бъется на 2 байта часы и минуты, 0x0d21 = 13:33 по умолчанию формат 12 часовой, но по кнопке переключается на 24
     };
 
     struct ROG_PACKET{
