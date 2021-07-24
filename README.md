@@ -57,10 +57,16 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
        На просторах интернета найдены вот такие опции, которые нам крайне помогли
 ##### Включить режим ручного управления картой (оверклок)
 *       nvidia-xconfig -a --cool-bits=28 --allow-empty-initial-configuration
-*       nvidia-settings -a '[gpu:0]/GPUFanControlState=1                      - Устанавливаем режим управления куллерами (ручной)
-*       nvidia-settings -a '[fan]/GPUTargetFanSpeed=<some number>             - Устанавливаем скорость вентилятора, ставится в процентах, <some number> от 0 до 100
-*       nvidia-smi --query-gpu=temperature.gpu                                - Запрос температуры видеокарты также можно запросить процент вращения куллера fan.speed
-*       nvidia-settings --terse --query [fan:0]/GPUCurrentFanSpeedRPM         - Запрос скорости вращения вентиляторов
+##### Устанавливаем режим управления куллерами (ручной)
+*       nvidia-settings -a '[gpu:0]/GPUFanControlState=1                      
+##### Устанавливаем скорость вентилятора, ставится в процентах, some number от 0 до 100
+*       nvidia-settings -a '[fan]/GPUTargetFanSpeed=<some number>
+       
+##### Запрос температуры видеокарты также можно запросить процент вращения куллера fan.speed
+*       nvidia-smi --query-gpu=temperature.gpu
+       
+##### Запрос скорости вращения вентиляторов
+*       nvidia-settings --terse --query [fan:0]/GPUCurrentFanSpeedRPM         
 
 
 ### Описание
