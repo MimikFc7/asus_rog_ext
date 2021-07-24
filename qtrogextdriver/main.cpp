@@ -1,20 +1,35 @@
 #include <QCoreApplication>
 #include <libusb-1.0/libusb.h>
-#include <usbg/function/hid.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <syslog.h>
+
 #include <QDebug>
 #include <QFile>
 #include <QThread>
-#include <qdatetime.h>
-
-#include <linux/types.h>
-#include <linux/hiddev.h>
-#include <linux/hid.h>
+#include <QTimer>
+#include <QDateTime>
+#include <QLoggingCategory>
+#include <QProcess>
 
 #define CPU_FREQ_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
 #define CPU_TEMP_PATH "/sys/devices/platform/coretemp.0/hwmon/hwmon3/temp1_input"
 #define CPU_RPM_PATH "/sys/class/hwmon/hwmon4/fan1_input"
-#define CPU_RPM_MAX 3000
+#define CPU2_RPM_PATH "/sys/class/hwmon/hwmon4/fan2_input"
+#define CHA1_RPM_PATH "/sys/class/hwmon/hwmon4/fan4_input"
+#define CHA2_RPM_PATH "/sys/class/hwmon/hwmon4/fan5_input"
+#define CHA3_RPM_PATH "/sys/class/hwmon/hwmon4/fan7_input"
 
+#define CPU_RPM_MAX 3000
+#define CHA_RPM_MAX 2000
+
+static QTimer *usbhandler = nullptr;;
+static libusb_device_handle *asusRogBaseUsbDevice = nullptr;
 
 enum COMMANDTYPE : uint8_t{
     READ = 1,
@@ -23,29 +38,13 @@ enum COMMANDTYPE : uint8_t{
 };
 
 
-//10 - включить выключить экран? (3) статус включен, 2 выключен!
-//11 - данные есть но что там не понять
-
-/*96 - на экране снизу есть интересные написи, это они, 0 - скрыыть, 1 - FCTON 2 - SPORT, 3 - FCTON SPORT, 4 - RACO, 5 - FCTON  RACO, 6 - SPORT  RACO, 7 - FCTON SPORT  RACO, 8 - SHOOTING, 9 - SHOOTING FCTON, 10 - SHOOTING SPORT
-       11 - SHOOTING FCTON SPORT  долго перебирать 31 - показать все значки*/
-
-//32 - CPU TEMP
-//64 - CPU RPM
-//49 cpu freq надо делить на  16000 в мегагерцах с точкой
-//80 - часы минуты минуты 0x0d11 - собирать надо как 2 байта в хексе текущего времени
-
-/*
-                            uchar* lpReportBuffer2 = new uchar[8];
-                            memset(lpReportBuffer2, 0x00,8);
-                            ROG_PACKET * packet1 = new ROG_PACKET();
-                            packet1->command2 = WRITE;
-                            packet1->address = CPU_SCALETYPE;
-                            packet1->value =  10;
-                            memcpy(lpReportBuffer2, packet1,8);
-                            //настройка для скейла процессора выбрал себе по умолчанию 10
-
-*/
-
+//Для видеокарт NVIDIA
+//выполнять под рутом
+//nvidia-xconfig -a --cool-bits=28 --allow-empty-initial-configuration                               - First to enable overclocking (One time thing)
+//nvidia-settings -a '[gpu:0]/GPUFanControlState=1                                                   - Secondly enable GPU fan control to manual mode
+//nvidia-settings -a '[fan]/GPUTargetFanSpeed=<some number>                                          - Lastly set the fan speed
+//nvidia-smi --query-gpu=temperature.gpu,fan.speed  --format=csv,noheader,nounits                    - Call gpu temp
+//nvidia-settings --terse --query [fan:0]/GPUCurrentFanSpeedRPM                                      - Call gpu RPM
 
 struct DISPLAYICONS{
 
@@ -88,13 +87,25 @@ struct DISPLAYFLAGS{
 
 enum ADDRESS_TYPE : uint8_t{
     INIT = 1, //сброс, принимает знаения, но не понятно в одном случае загорается USB во втором нет (переключение режима? )
-    DISPLAY_ON_OF = 10, //0x0100 - включить, 0x0000 - выключить, тут есть редимы, похоже на битовую маску, включают два значка REC и CPU^
-    DISPLAY_BOTTOM_LINE_ICONS = 96, //тут очень много вариантов, я пока не понял может битовая маска
+    SETWORKMODE = 3, //переключение режимов, нашел!!! IDA решает =)) 0xAA - рабочий режим, 0x00 режим USB
+    DISPLAY_ON_OF = 10, // DISPLAYFLAGS - Битовая маска экранов
+    DISPLAY_BOTTOM_LINE_ICONS = 96, //DISPLAYICONS - битовая маска показа значков
     CPU_TEMP = 32,
+    MB_TEMP = 33,
     CPU_RPM = 64,
+    CPU_RPM2 = 65,
+    CHASIS_RPM1 = 66,
+    CHASIS_RPM2 = 67,
+    CHASIS_RPM3 = 68,
+
     CPU_RPM_PERC = 74, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
+    CPU_RPM_PERC2 = 75, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
+    CHA_RPM_PERC1 = 76, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
+    CHA_RPM_PERC2 = 77, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
+    CHA_RPM_PERC3 = 78, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
+
     CPU_SCALETYPE = 48, // 0 (не понятно) 1 - делитель 10, 40000 / 10 = 4 Ghz, вариантов много 10 самый удобный (0x0a00)
-    CPU_FREQ = 49, //cpu freq надо делить на  16000 в мегагерцах с точкой //странно но снва все изменилось теперь делитель 2,5 вероятно где-то есть настройка делимости
+    CPU_FREQ = 49, //cpu freq, для корректного отображения надо задать делитель  CPU_SCALETYPE (1) оптимально
     TIME = 80 //время бется на 2 байта часы и минуты, 0x1233 = 12:33 по умолчанию формат 12 часовой, но по кнопке переключается на 24
 };
 
@@ -112,12 +123,67 @@ struct ROG_PACKET{
 } __attribute__((packed));
 
 
+static void handler(int s) {
+    syslog (LOG_NOTICE, " qtrogextdriver called: SIGQUIT");
+    if(usbhandler != nullptr){
+        usbhandler->stop();
+        delete usbhandler;
+
+        if(asusRogBaseUsbDevice != nullptr){
+            libusb_close(asusRogBaseUsbDevice);
+        }
+    }
+    exit(EXIT_SUCCESS);
+}
+
+static void skeleton_daemon()
+{
+    pid_t pid;
+    pid = fork();
+
+    if (pid < 0){
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid > 0){
+        exit(EXIT_SUCCESS);
+    }
+
+    if (setsid() < 0)
+        exit(EXIT_FAILURE);
+
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
+
+    pid = fork();
+
+    if (pid < 0)
+        exit(EXIT_FAILURE);
+
+    if (pid > 0){
+        exit(EXIT_SUCCESS);
+    }
+
+    umask(0);
+    chdir("/");
+
+    signal(SIGQUIT, handler);
+    signal(SIGSTOP, handler);
+    signal(SIGTERM, handler);
+    signal(SIGCHLD, handler);
+
+    /* Open the log file */
+    openlog ("qtrogextdriver", LOG_PID, LOG_DAEMON);
+}
+
+
+
 int writeData( libusb_device_handle *devhandler, unsigned char *lpReportBuffer1){
    return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_OUT, 0x09, 0x0301 , 0, lpReportBuffer1, 8, 0); // SET REPORT WORKED
 }
 
 int readData( libusb_device_handle *devhandler, unsigned char *lpReportBuffer1){
-    return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_IN, 0x01, 0x0301 , 0, lpReportBuffer1, 8, 0); // SET REPORT WORKED
+    return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_IN, 0x01, 0x0301 , 0, lpReportBuffer1, 8, 0); // GET REPORT WORKED
 }
 
 
@@ -133,8 +199,17 @@ void writeCommand( ADDRESS_TYPE command, uint16_t value, libusb_device_handle *d
     packet->value = value;
     memcpy(lpReportBuffer1, packet,8);
 
-    writeData(devhandler,lpReportBuffer1);
-    readData(devhandler,lpReportBuffer1);
+    int usb_state = -10000;
+
+    usb_state =  writeData(devhandler,lpReportBuffer1);
+    if(usb_state < 0){
+        exit(1);
+    }
+    usb_state = -10000;
+    usb_state = readData(devhandler,lpReportBuffer1);
+    if(usb_state < 0){
+        exit(1);
+    }
     delete packet;
     delete []  lpReportBuffer1;
 }
@@ -153,78 +228,134 @@ long readFileValue(QString file_path){
 
 int main(int argc, char *argv[])
 {
+
+   /* syslog (LOG_ERR, " qtrogextdriver called start or stop ");
+    if(strcmp(argv[1], "stop") == 0){
+
+        if(usbhandler != nullptr){
+            usbhandler->stop();
+            delete usbhandler;
+
+            if(asusRogBaseUsbDevice != nullptr){
+                libusb_close(asusRogBaseUsbDevice);
+            }
+        }
+    }*/
+
+   // skeleton_daemon();
+
+    QLoggingCategory::setFilterRules("*.debug=true");
+
     QCoreApplication a(argc, argv);
+    //if(argc > 1)
+    {
+        //if(strcmp(argv[1], "start") == 0)
+        {
+            libusb_init(nullptr);
+                    asusRogBaseUsbDevice = libusb_open_device_with_vid_pid(nullptr,0x1770,0xef35); //libusb_open(dev,&asusRogBaseUsbDevice);
+                    if( asusRogBaseUsbDevice != nullptr){
+                        syslog (LOG_NOTICE, " qtrogextdriver found usb device");
+                            libusb_reset_device(asusRogBaseUsbDevice);
+                            if( libusb_kernel_driver_active(asusRogBaseUsbDevice,0) ){
+                                libusb_detach_kernel_driver(asusRogBaseUsbDevice,0);
+                            }
+                            libusb_claim_interface(asusRogBaseUsbDevice, 0);
+                            libusb_set_configuration(asusRogBaseUsbDevice,0);
+                            libusb_clear_halt(asusRogBaseUsbDevice,0x03);
+                            libusb_clear_halt(asusRogBaseUsbDevice,0x82);
 
-    libusb_context * ctx = nullptr;
-    libusb_init(&ctx);
+                            writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
 
-    libusb_device **list = nullptr;
+                            usbhandler = new QTimer();
+                            usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
 
-    if(list != nullptr){
-       libusb_free_device_list(list,0);
-    }
+                            writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);                            
 
-   ssize_t count = libusb_get_device_list(nullptr,&list);
-   libusb_device_handle *devhandler = nullptr;
-
-    for(int i = 0; i < count; i++){
-        libusb_device *dev = list[i];
-        libusb_device_descriptor desc = {0};
-        if(dev != nullptr) {
-            int rc = libusb_get_device_descriptor(dev, &desc);
-            if(rc == 0){
-
-                if((int)desc.idVendor == 0x1770 && (int)desc.idProduct == 0xef35){
-                    int usbset = libusb_open(dev,&devhandler);
-                    libusb_reset_device(devhandler);
-                    if( usbset == LIBUSB_SUCCESS){
-                        if( libusb_kernel_driver_active(devhandler,0) ){
-                            libusb_detach_kernel_driver(devhandler,0);
-                        }
-                        libusb_claim_interface(devhandler, 0);
-                        libusb_set_configuration(devhandler,0);
-                        libusb_clear_halt(devhandler,0x03);                        
-                        libusb_clear_halt(devhandler,0x82);                     
-
-                        writeCommand(CPU_SCALETYPE,10,devhandler, false);
-
-                        uint16_t num =  ( readFileValue(CPU_TEMP_PATH) / 1000 ) ;
-                        writeCommand(CPU_TEMP,num,devhandler, true);
-
-                        num = readFileValue(CPU_RPM_PATH);
-
-                        writeCommand(CPU_RPM,num*10,devhandler, true);
-                        writeCommand(CPU_RPM_PERC,((num * 100)/  CPU_RPM_MAX) / 10,devhandler);
-
-                        num= (readFileValue(CPU_FREQ_PATH) / 1000);
-                        writeCommand(CPU_FREQ,num,devhandler, true);
+                            uint16_t num =  ( readFileValue(CPU_TEMP_PATH) / 1000 ) ;
+                            writeCommand(CPU_TEMP,num,asusRogBaseUsbDevice, true);
 
 
-                        DISPLAYICONS showAllIcons;
-
-                        showAllIcons.MUSIC = 1;
-                        showAllIcons.SPORT = 1;
-                        showAllIcons.RACING = 1;
-                        showAllIcons.FICTION = 1;
-                        showAllIcons.SHOOTING = 1;
+                            num = readFileValue(CPU_RPM_PATH);
+                            writeCommand(CPU_RPM,num,asusRogBaseUsbDevice, true);
+                            writeCommand(CPU_RPM_PERC,((num * 100)/  CPU_RPM_MAX) / 10,asusRogBaseUsbDevice);
 
 
-                        writeCommand(DISPLAY_BOTTOM_LINE_ICONS,(uint8_t)showAllIcons,devhandler, false);
+                            num = readFileValue(CPU2_RPM_PATH);
+                            writeCommand(CPU_RPM2,num,asusRogBaseUsbDevice, true);
+                            writeCommand(CPU_RPM_PERC2,((num * 100)/  CPU_RPM_MAX) / 10,asusRogBaseUsbDevice);
 
-                        CURRENTTIME time;
-                        time.hour =  QDateTime::currentDateTime().time().hour() ;
-                        time.min = QDateTime::currentDateTime().time().minute();
 
-                        writeCommand(TIME,(uint16_t)time,devhandler);
-                        exit(0);
+                            num = readFileValue(CHA1_RPM_PATH);
+                            writeCommand(CHASIS_RPM1,num,asusRogBaseUsbDevice, true);
+                            writeCommand(CHA_RPM_PERC1,((num * 100)/  CHA_RPM_MAX) / 10,asusRogBaseUsbDevice);
 
+
+                            num = readFileValue(CHA2_RPM_PATH);
+                            writeCommand(CHASIS_RPM2,num,asusRogBaseUsbDevice, true);
+                            writeCommand(CHA_RPM_PERC2,((num * 100)/  CHA_RPM_MAX) / 10,asusRogBaseUsbDevice);
+
+
+                            //Это только для видях NVIDIA
+                            QProcess getGpuTemp;
+                            QStringList arguments;
+                            arguments << "--query-gpu=temperature.gpu" <<  "--format=csv,noheader,nounits";
+                            getGpuTemp.start("nvidia-smi",arguments,QProcess::ReadOnly);
+                            getGpuTemp.waitForFinished();
+
+                            QByteArray gpuTemp_result = getGpuTemp.readAllStandardOutput();
+                            getGpuTemp.close();
+                            arguments.clear();
+                            arguments << "--terse" <<  "--query" <<"[fan:0]/GPUCurrentFanSpeedRPM";
+                            getGpuTemp.start("nvidia-settings",arguments,QProcess::ReadOnly);
+                            getGpuTemp.waitForFinished();
+
+                            gpuTemp_result.clear();
+                            gpuTemp_result = getGpuTemp.readAllStandardOutput();
+                            num =  gpuTemp_result.toInt();
+                            getGpuTemp.close();
+
+                            writeCommand(CHASIS_RPM3,num,asusRogBaseUsbDevice, true);
+                            writeCommand(CHA_RPM_PERC3,((num * 100)/  CPU_RPM_MAX) / 10,asusRogBaseUsbDevice);
+                            // Конец только nvidia
+
+
+
+
+                            num= (readFileValue(CPU_FREQ_PATH) / 1000);
+                            writeCommand(CPU_FREQ,num,asusRogBaseUsbDevice, true);
+
+
+                            DISPLAYICONS showAllIcons;
+                            showAllIcons.MUSIC = 1;
+                            showAllIcons.SPORT = 1;
+                            showAllIcons.RACING = 1;
+                            showAllIcons.FICTION = 1;
+                            showAllIcons.SHOOTING = 1;
+                            showAllIcons.icon5 = 1;
+                            showAllIcons.icon6 = 1;
+                            showAllIcons.icon7 = 1;
+
+                            writeCommand(DISPLAY_BOTTOM_LINE_ICONS,(uint8_t)showAllIcons,asusRogBaseUsbDevice, false);
+
+
+                            CURRENTTIME time;
+                            time.hour =  QDateTime::currentDateTime().time().hour() ;
+                            time.min = QDateTime::currentDateTime().time().minute();
+
+                            writeCommand(TIME,(uint16_t)time,asusRogBaseUsbDevice);
+
+                        });
+
+                        usbhandler->setInterval(5000);
+                        usbhandler->start();
+
+                    }else{
+                            syslog (LOG_NOTICE, " qtrogextdriver LIBUSB_ERROR open usb device");
                     }
                 }
 
-            }
-    }
-    }
 
+    }
 
     return a.exec();
 }
