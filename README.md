@@ -53,6 +53,15 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 ### Необходимые утилиты
 * lm_sensors qmake gcc g++ 
 
+### Для видеокарт NVIDIA
+       На просторах интернета найдены вот такие опции, которые нам крайне помогли
+*       nvidia-xconfig -a --cool-bits=28 --allow-empty-initial-configuration  -  Включить режим ручного управления картой (оверклок)
+*       nvidia-settings -a '[gpu:0]/GPUFanControlState=1                      - Устанавливаем режим управления куллерами (ручной)
+*       nvidia-settings -a '[fan]/GPUTargetFanSpeed=<some number>             - Устанавливаем скорость вентилятора, ставится в процентах, <some number> от 0 до 100
+*       nvidia-smi --query-gpu=temperature.gpu                                - Запрос температуры видеокарты также можно запросить процент вращения куллера fan.speed
+*       nvidia-settings --terse --query [fan:0]/GPUCurrentFanSpeedRPM         - Запрос скорости вращения вентиляторов
+
+
 ### Описание
 
        #define CPU_FREQ_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" 
