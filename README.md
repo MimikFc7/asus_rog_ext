@@ -47,7 +47,8 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
     Для установки, надо в systemd установить файлик qtrogextdriver.service предваритель отредактировав, указать путь расположения файла
     ExecStart=/home/programs/system/qtrogextdriver start
     ExecStop=/home/programs/system/qtrogextdriver stop
-    !/home/programs/system/qtrogextdriver - путь до сервиса после компиляции
+    
+    /home/programs/system/qtrogextdriver - путь до сервиса после компиляции
 
 ### Описание
 
