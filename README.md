@@ -58,6 +58,7 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
     
 ### Необходимые утилиты
 * lm_sensors qmake gcc g++ 
+* Драйверы nvidia если видеокарта nvidia и хочется ее показывать тоже
 
 ### Для видеокарт NVIDIA
        На просторах интернета найдены вот такие опции, которые нам крайне помогли
