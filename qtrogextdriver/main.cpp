@@ -27,9 +27,14 @@
 
 #define CPU_RPM_MAX 3000
 #define CHA_RPM_MAX 2000
+#define VIDEO_RPM_MAX 3600 //так как у нвидия работают извращуги, почему-то нельзя получить скорость вращения куллера без дисплея, но можно получить в процентах, зачем и почему, больше вопросов чем ответов.... поставил на максисус у меня это 3600 будем считать сами...
 
 static QTimer *usbhandler = nullptr;;
 static libusb_device_handle *asusRogBaseUsbDevice = nullptr;
+
+static qint64 currenpid = 0;;
+static qint64 childpid = 0;;
+static qint64 forkedpid = 0;;
 
 enum COMMANDTYPE : uint8_t{
     READ = 1,
@@ -124,28 +129,38 @@ struct ROG_PACKET{
 
 
 static void handler(int s) {
-    syslog (LOG_NOTICE, " qtrogextdriver called: SIGQUIT");
-    if(usbhandler != nullptr){
-        usbhandler->stop();
-        delete usbhandler;
+    qint64 calerpid = getpid();
 
-        if(asusRogBaseUsbDevice != nullptr){
-            libusb_close(asusRogBaseUsbDevice);
-        }
+    if(childpid != 0 && childpid != calerpid){
+        //syslog (LOG_NOTICE, " qtrogextdriver ignore: SIGQUIT %lli  %lli  %lli   %lli", currenpid,childpid, calerpid, forkedpid);
     }
-    exit(EXIT_SUCCESS);
+    else
+    {
+        syslog (LOG_NOTICE, " qtrogextdriver called: SIGQUIT %lli  %lli  %lli   %lli", currenpid,childpid, calerpid,forkedpid);
+        if(usbhandler != nullptr){
+            usbhandler->stop();
+            delete usbhandler;
+
+            if(asusRogBaseUsbDevice != nullptr){
+                libusb_close(asusRogBaseUsbDevice);
+            }
+        }
+        exit(EXIT_SUCCESS);
+    }
 }
 
 static void skeleton_daemon()
 {
+
+    forkedpid = getpid();
+
     pid_t pid;
     pid = fork();
 
     if (pid < 0){
         exit(EXIT_FAILURE);
     }
-
-    if (pid > 0){
+    else if (pid > 0){
         exit(EXIT_SUCCESS);
     }
 
@@ -171,6 +186,11 @@ static void skeleton_daemon()
     signal(SIGSTOP, handler);
     signal(SIGTERM, handler);
     signal(SIGCHLD, handler);
+
+   /* int x;
+    for (x = sysconf(_SC_OPEN_MAX); x>=0; x--) {
+        close (x);
+    }*/
 
     /* Open the log file */
     openlog ("qtrogextdriver", LOG_PID, LOG_DAEMON);
@@ -229,7 +249,7 @@ long readFileValue(QString file_path){
 int main(int argc, char *argv[])
 {
 
-    syslog (LOG_ERR, " qtrogextdriver called start or stop ");
+    syslog (LOG_ERR, " qtrogextdriver called start or stop TEST ");
     if(strcmp(argv[1], "stop") == 0){
 
         if(usbhandler != nullptr){
@@ -238,18 +258,21 @@ int main(int argc, char *argv[])
 
             if(asusRogBaseUsbDevice != nullptr){
                 libusb_close(asusRogBaseUsbDevice);
-            }
+            }            
         }
+        // exit(EXIT_SUCCESS);
     }
 
     skeleton_daemon();
 
+    currenpid = getpid();
+
     QLoggingCategory::setFilterRules("*.debug=true");
 
     QCoreApplication a(argc, argv);
-    if(argc > 1)
+    //if(argc > 1)
     {
-        if(strcmp(argv[1], "start") == 0)
+        //if(strcmp(argv[1], "start") == 0)
         {
             libusb_init(nullptr);
                     asusRogBaseUsbDevice = libusb_open_device_with_vid_pid(nullptr,0x1770,0xef35); //libusb_open(dev,&asusRogBaseUsbDevice);
@@ -268,6 +291,8 @@ int main(int argc, char *argv[])
 
                             usbhandler = new QTimer();
                             usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
+
+                                childpid = 0;
 
                             writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);                            
 
@@ -295,31 +320,9 @@ int main(int argc, char *argv[])
                             writeCommand(CHA_RPM_PERC2,((num * 100)/  CHA_RPM_MAX) / 10,asusRogBaseUsbDevice);
 
 
-                            //Это только для видях NVIDIA
-                            QProcess getGpuTemp;
-                            QStringList arguments;
-                            arguments << "--query-gpu=temperature.gpu" <<  "--format=csv,noheader,nounits";
-                            getGpuTemp.start("nvidia-smi",arguments,QProcess::ReadOnly);
-                            getGpuTemp.waitForFinished();
-
-                            QByteArray gpuTemp_result = getGpuTemp.readAllStandardOutput();
-                            getGpuTemp.close();
-                            arguments.clear();
-                            arguments << "--terse" <<  "--query" <<"[fan:0]/GPUCurrentFanSpeedRPM";
-                            getGpuTemp.start("nvidia-settings",arguments,QProcess::ReadOnly);
-                            getGpuTemp.waitForFinished();
-
-                            gpuTemp_result.clear();
-                            gpuTemp_result = getGpuTemp.readAllStandardOutput();
-                            num =  gpuTemp_result.toInt();
-                            getGpuTemp.close();
-
-                            writeCommand(CHASIS_RPM3,num,asusRogBaseUsbDevice, true);
-                            writeCommand(CHA_RPM_PERC3,((num * 100)/  CPU_RPM_MAX) / 10,asusRogBaseUsbDevice);
-                            // Конец только nvidia
-
                             num= (readFileValue(CPU_FREQ_PATH) / 1000);
                             writeCommand(CPU_FREQ,num,asusRogBaseUsbDevice, true);
+
 
                             DISPLAYICONS showAllIcons;
                             showAllIcons.MUSIC = 1;
@@ -333,11 +336,54 @@ int main(int argc, char *argv[])
 
                             writeCommand(DISPLAY_BOTTOM_LINE_ICONS,(uint8_t)showAllIcons,asusRogBaseUsbDevice, false);
 
+
                             CURRENTTIME time;
                             time.hour =  QDateTime::currentDateTime().time().hour() ;
                             time.min = QDateTime::currentDateTime().time().minute();
 
                             writeCommand(TIME,(uint16_t)time,asusRogBaseUsbDevice);
+
+
+
+
+                            //Это только для видях NVIDIA
+
+
+
+                            QProcess *getGpuTemp = new QProcess(nullptr);
+                            QStringList arguments;
+                            arguments << "--query-gpu=temperature.gpu,fan.speed" <<  "--format=csv,noheader,nounits";
+                            getGpuTemp->blockSignals(true);
+                            getGpuTemp->start("nvidia-smi",arguments);
+                            childpid = getGpuTemp->processId();
+                            getGpuTemp->waitForFinished(1000);
+
+                            QByteArray gpuTemp_result = getGpuTemp->readAllStandardOutput();
+                            getGpuTemp->close();
+
+
+                            QList<QByteArray> splitvalues = gpuTemp_result.split(',');
+
+                            if(splitvalues.size() > 0 ){
+                                num = splitvalues.at(0).toInt();
+                                writeCommand(MB_TEMP,num,asusRogBaseUsbDevice, true);
+                            }
+                             if(splitvalues.size() > 1 ){
+
+                                 num = splitvalues.at(1).toInt();
+                                 writeCommand(CHA_RPM_PERC3,num/10,asusRogBaseUsbDevice);
+
+                                 float calc = VIDEO_RPM_MAX * ((float)num/100);
+                                 writeCommand(CHASIS_RPM3,(int)calc,asusRogBaseUsbDevice, true);
+                             }
+
+
+                            getGpuTemp->kill();
+                            delete getGpuTemp;
+                            childpid = 0;
+
+                            // Конец только nvidia
+
 
                         });
 
