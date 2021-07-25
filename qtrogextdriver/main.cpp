@@ -36,6 +36,8 @@ static qint64 currenpid = 0;
 static qint64 childpid = 0;;
 static qint64 forkedpid = 0;;
 static qint64 errorcounter = 0;
+static qint64 timesheduller = 1;
+static QMap<int,int> *checker = nullptr;
 
 enum COMMANDTYPE : uint8_t{
     READ = 1,
@@ -110,6 +112,7 @@ enum ADDRESS_TYPE : uint8_t{
     CHA_RPM_PERC2 = 77, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
     CHA_RPM_PERC3 = 78, //0x0300 0x03 (процентная шкала от 1 до 10 (0x0a)
 
+    VOLUME = 98, //Volume регулятор звука, только чтение?
     CPU_SCALETYPE = 48, // 0 (не понятно) 1 - делитель 10, 40000 / 10 = 4 Ghz, вариантов много 10 самый удобный (0x0a00)
     CPU_FREQ = 49, //cpu freq, для корректного отображения надо задать делитель  CPU_SCALETYPE (1) оптимально
     TIME = 80 //время бется на 2 байта часы и минуты, 0x1233 = 12:33 по умолчанию формат 12 часовой, но по кнопке переключается на 24
@@ -137,6 +140,7 @@ static void handler(int s) {
     }
     else
     {
+        if( currenpid != forkedpid ) {}else{
         syslog (LOG_NOTICE, " qtrogextdriver called: SIGQUIT %lli  %lli  %lli   %lli", currenpid,childpid, calerpid,forkedpid);
         if(usbhandler != nullptr){
             usbhandler->stop();
@@ -147,6 +151,7 @@ static void handler(int s) {
             }
         }
         exit(EXIT_SUCCESS);
+        }
     }
 }
 
@@ -241,6 +246,56 @@ void writeCommand( ADDRESS_TYPE command, uint16_t value, libusb_device_handle *d
     delete []  lpReportBuffer1;
 }
 
+
+
+void readCommand( int command, uint16_t value, libusb_device_handle *devhandler, bool littleEndian = false){
+
+    uchar* lpReportBuffer1 = new uchar[8];
+    memset(lpReportBuffer1, 0x00,8);
+
+    ROG_PACKET * packet = new ROG_PACKET();
+    packet->command2 = READ;
+    packet->address = DISPLAY_ON_OF;
+    if(littleEndian){ value = (value>>8) | (value<<8); }
+    packet->value = value;
+    memcpy(lpReportBuffer1, packet,8);
+
+    int usb_state = -10000;
+    lpReportBuffer1[2] = command;
+
+    usb_state =  writeData(devhandler,lpReportBuffer1);
+    if(usb_state < 0){
+        syslog (LOG_ERR, " qtrogextdriver usb data write error code: %i ",usb_state );
+        errorcounter = errorcounter+1;
+    }else{
+        errorcounter = 0;
+        //qDebug() << " SENT READ COMMAND " << command << "   value " << QByteArray::fromRawData( (char*)lpReportBuffer1, 8 ).toHex();
+    }
+    usb_state = -10000;
+    usb_state = readData(devhandler,lpReportBuffer1);
+    if(usb_state < 0){
+        syslog (LOG_ERR, " qtrogextdriver usb data read error code: %i ",usb_state );
+        errorcounter = errorcounter+1;
+    }else{
+        errorcounter = 0;
+        if(lpReportBuffer1[3] != 0xff){
+            if(checker->contains(  command ))
+            {
+                if( checker->value( command ) !=  lpReportBuffer1[3] ){
+                    if(command == 98){
+                        //тут управление звуком, но для этого надо делать GUI, а Надо ли?
+                    }
+                    //qDebug() << " RESP READ COMMAND " << command << "   value " << QByteArray::fromRawData( (char*)lpReportBuffer1, 8 ).toHex();
+                }
+            }
+        }
+        checker->insert(command,  lpReportBuffer1[3]);
+    }
+    delete packet;
+    delete []  lpReportBuffer1;
+}
+
+
 long readFileValue(QString file_path){
 
     long num = 0;
@@ -256,6 +311,19 @@ long readFileValue(QString file_path){
 int main(int argc, char *argv[])
 {
 
+    // RESP READ COMMAND  98    value  "01016239ffffffaa"
+    // RESP READ COMMAND 1 98    value  "01016240ffffffaa"
+    // RESP READ COMMAND  98    value  "0101622cffffffaa"
+
+    //TO DO
+    /*
+            Я записал куда-то байт, и теперь горит надпись еще и асус, вопрос, откуда и куда, по окончании всех тестов надо перепрошить и сбросить по питанию для тестов
+
+            для полной управляемости и настройки, можно сделать GUI но надо ли? Стоит ли изучить спрос? Но если деать GUI то тогда и управление все можно делать и с нее,
+            тогда будет прикольно и профили делать и все такое, но это долго, если будет спрос, займусь
+    */
+
+
     syslog (LOG_ERR, " qtrogextdriver called start or stop TEST ");
     if(strcmp(argv[1], "stop") == 0){
 
@@ -267,7 +335,7 @@ int main(int argc, char *argv[])
                 libusb_close(asusRogBaseUsbDevice);
             }            
         }
-        // exit(EXIT_SUCCESS);
+        exit(EXIT_SUCCESS);
     }
 
     skeleton_daemon();
@@ -294,11 +362,15 @@ int main(int argc, char *argv[])
                             libusb_clear_halt(asusRogBaseUsbDevice,0x03);
                             libusb_clear_halt(asusRogBaseUsbDevice,0x82);
 
-                             writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
+                            writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
 
-
+                            checker = new QMap<int,int>;
                             usbhandler = new QTimer();
                             usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
+
+                           // readCommand(VOLUME,0x0000,asusRogBaseUsbDevice); чтение положения ролика для управления звука, но тогда приложуху надо запускать от текущего юзера а не как демона, стоит ли?
+                           // таймер выше и проверка ниже сделаны для того, чтобы читать USB быстрее чем писать туда значения, надо еще подумать над EDIT режимом!
+
 
                                 if(errorcounter > 30){
                                     syslog (LOG_ERR, " qtrogextdriver usb too many error transfer, exit %i ", errorcounter);
@@ -306,12 +378,20 @@ int main(int argc, char *argv[])
                                     if(childpid > 0){
                                         kill(childpid, SIGKILL);
                                     }
+
                                     kill(currenpid, SIGKILL);
+                                    usbhandler->stop();
                                     exit(0);
                                 }
                             childpid = 0;
 
-                            writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);                            
+                            // Опытным путем нашел, что отправлять надо команду 0xaa раз в 5 скунд, остальное можно реже чтобы не скакало на экране, хотя как по мне 5 секунд норм
+
+                            if ( QDateTime::currentSecsSinceEpoch() - timesheduller > 5 ){
+
+                            timesheduller = QDateTime::currentSecsSinceEpoch();
+
+                            writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);
 
                             uint16_t num =  ( readFileValue(CPU_TEMP_PATH) / 1000 ) ;
                             writeCommand(CPU_TEMP,num,asusRogBaseUsbDevice, true);
@@ -393,12 +473,13 @@ int main(int argc, char *argv[])
                             delete getGpuTemp;
                             childpid = 0;
 
+                            }
                             // Конец только nvidia
 
 
                         });
 
-                        usbhandler->setInterval(5000);
+                        usbhandler->setInterval(1);
                         usbhandler->start();
 
                     }else{
