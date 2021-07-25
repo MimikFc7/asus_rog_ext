@@ -70,12 +70,17 @@ https://www.asus.com/me-en/SupportOnly/ROG%20Front%20Base/HelpDesk_Download/
 *       nvidia-settings -a '[fan]/GPUTargetFanSpeed=<some number>
        
 ##### Запрос температуры видеокарты также можно запросить процент вращения куллера fan.speed
-*       nvidia-smi --query-gpu=temperature.gpu
+*       nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits
        
-##### Запрос скорости вращения вентиляторов
+##### Запрос скорости вращения вентиляторов только если запускать процесс от текущего пользователя с дисплеем       
 *       nvidia-settings --terse --query [fan:0]/GPUCurrentFanSpeedRPM         
+       
+##### Запрос скорости вращения вентиляторов в процентах      
+*       nvidia-smi --query-gpu=fan.speed --format=csv,noheader,nounits
 
-
+##### Также можно запросить несколько параметров сразу 
+*       nvidia-smi --query-gpu=temperature.gpu,fan.speed --format=csv,noheader,nounits
+       
 ### Описание
 
        #define CPU_FREQ_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq" 
