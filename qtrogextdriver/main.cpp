@@ -32,9 +32,10 @@
 static QTimer *usbhandler = nullptr;;
 static libusb_device_handle *asusRogBaseUsbDevice = nullptr;
 
-static qint64 currenpid = 0;;
+static qint64 currenpid = 0;
 static qint64 childpid = 0;;
 static qint64 forkedpid = 0;;
+static qint64 errorcounter = 0;
 
 enum COMMANDTYPE : uint8_t{
     READ = 1,
@@ -199,11 +200,11 @@ static void skeleton_daemon()
 
 
 int writeData( libusb_device_handle *devhandler, unsigned char *lpReportBuffer1){
-   return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_OUT, 0x09, 0x0301 , 0, lpReportBuffer1, 8, 0); // SET REPORT WORKED
+   return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_OUT, 0x09, 0x0301 , 0, lpReportBuffer1, 8, 1000); // SET REPORT WORKED
 }
 
 int readData( libusb_device_handle *devhandler, unsigned char *lpReportBuffer1){
-    return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_IN, 0x01, 0x0301 , 0, lpReportBuffer1, 8, 0); // GET REPORT WORKED
+    return libusb_control_transfer(devhandler,LIBUSB_REQUEST_TYPE_CLASS|LIBUSB_RECIPIENT_INTERFACE|LIBUSB_ENDPOINT_IN, 0x01, 0x0301 , 0, lpReportBuffer1, 8, 1000); // GET REPORT WORKED
 }
 
 
@@ -223,12 +224,18 @@ void writeCommand( ADDRESS_TYPE command, uint16_t value, libusb_device_handle *d
 
     usb_state =  writeData(devhandler,lpReportBuffer1);
     if(usb_state < 0){
-        exit(1);
+        syslog (LOG_ERR, " qtrogextdriver usb data write error code: %i ",usb_state );
+        errorcounter = errorcounter+1;
+    }else{
+        errorcounter = 0;
     }
     usb_state = -10000;
     usb_state = readData(devhandler,lpReportBuffer1);
     if(usb_state < 0){
-        exit(1);
+        syslog (LOG_ERR, " qtrogextdriver usb data read error code: %i ",usb_state );
+        errorcounter = errorcounter+1;
+    }else{
+        errorcounter = 0;
     }
     delete packet;
     delete []  lpReportBuffer1;
@@ -287,12 +294,22 @@ int main(int argc, char *argv[])
                             libusb_clear_halt(asusRogBaseUsbDevice,0x03);
                             libusb_clear_halt(asusRogBaseUsbDevice,0x82);
 
-                            writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
+                             writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
+
 
                             usbhandler = new QTimer();
                             usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
 
-                                childpid = 0;
+                                if(errorcounter > 30){
+                                    syslog (LOG_ERR, " qtrogextdriver usb too many error transfer, exit %i ", errorcounter);
+                                    errorcounter = 0;
+                                    if(childpid > 0){
+                                        kill(childpid, SIGKILL);
+                                    }
+                                    kill(currenpid, SIGKILL);
+                                    exit(0);
+                                }
+                            childpid = 0;
 
                             writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);                            
 
@@ -348,8 +365,6 @@ int main(int argc, char *argv[])
 
                             //Это только для видях NVIDIA
 
-
-
                             QProcess *getGpuTemp = new QProcess(nullptr);
                             QStringList arguments;
                             arguments << "--query-gpu=temperature.gpu,fan.speed" <<  "--format=csv,noheader,nounits";
@@ -361,20 +376,16 @@ int main(int argc, char *argv[])
                             QByteArray gpuTemp_result = getGpuTemp->readAllStandardOutput();
                             getGpuTemp->close();
 
-
                             QList<QByteArray> splitvalues = gpuTemp_result.split(',');
-
                             if(splitvalues.size() > 0 ){
                                 num = splitvalues.at(0).toInt();
                                 writeCommand(MB_TEMP,num,asusRogBaseUsbDevice, true);
                             }
-                             if(splitvalues.size() > 1 ){
-
-                                 num = splitvalues.at(1).toInt();
-                                 writeCommand(CHA_RPM_PERC3,num/10,asusRogBaseUsbDevice);
-
-                                 float calc = VIDEO_RPM_MAX * ((float)num/100);
-                                 writeCommand(CHASIS_RPM3,(int)calc,asusRogBaseUsbDevice, true);
+                            if(splitvalues.size() > 1 ){
+                                num = splitvalues.at(1).toInt();
+                                writeCommand(CHA_RPM_PERC3,num/10,asusRogBaseUsbDevice);
+                                float calc = VIDEO_RPM_MAX * ((float)num/100);
+                                writeCommand(CHASIS_RPM3,(int)calc,asusRogBaseUsbDevice, true);
                              }
 
 
