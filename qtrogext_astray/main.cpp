@@ -21,6 +21,13 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/soundcard.h>
+#include <sys/ioctl.h>
+#include <stdio.h>
+#include <alsa/asoundlib.h>
+
 
 #define CPU_FREQ_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
 #define CPU_TEMP_PATH "/sys/devices/platform/coretemp.0/hwmon/hwmon3/temp1_input"
@@ -44,10 +51,21 @@ static qint64 childpid = 0;;
 static qint64 forkedpid = 0;;
 static qint64 errorcounter = 0;
 static qint64 timesheduller = 1;
+static qint64 volumechecker = 1;
 static int searcheditcommand = 0;
 static QMap<int,int> *checker = nullptr;
 static bool editmode = false;
 static QSystemTrayIcon *tryIcon = nullptr;
+
+static snd_mixer_t* handle = nullptr;
+static snd_mixer_elem_t* elem = nullptr;
+static snd_mixer_selem_id_t* sid = nullptr;
+
+static const char* mix_name = "Master";
+static const char* card = "default";
+static uint mix_index = 0;
+static bool alsainit = false;
+static long systemVolumeValue = 0; //чтобы не заорало если на панеле поставить 100 процентов звук, а потом в системе выставить ниже и крутануть звук на панеле.
 
 enum COMMANDTYPE : uint8_t{
     READ = 1,
@@ -141,6 +159,71 @@ struct ROG_PACKET{
     uint8_t value4 = 0; //not determinated
 
 } __attribute__((packed));
+
+
+
+typedef enum {
+    AUDIO_VOLUME_SET,
+    AUDIO_VOLUME_GET,
+} audio_volume_action;
+
+
+void initalsa(){
+
+    alsainit = true;
+    if ((snd_mixer_open(&handle, 0)) < 0)
+        alsainit = false;
+    if ((snd_mixer_attach(handle, card)) < 0) {
+        snd_mixer_close(handle);
+    }
+    if ((snd_mixer_selem_register(handle, nullptr, nullptr)) < 0) {
+        snd_mixer_close(handle);
+        alsainit = false;
+    }
+    int ret = snd_mixer_load(handle);
+    if (ret < 0) {
+        snd_mixer_close(handle);
+        alsainit = false;
+    }
+    elem = snd_mixer_find_selem(handle, sid);
+    if (!elem) {
+        snd_mixer_close(handle);
+        alsainit = false;
+    }
+}
+
+int audio_volume(audio_volume_action action, long* outvol)
+{
+
+
+    initalsa();
+
+
+    if(alsainit){
+        long minv, maxv;
+        snd_mixer_selem_get_playback_volume_range (elem, &minv, &maxv);
+        if(action == AUDIO_VOLUME_GET) {
+            long volumetoperc = 0;
+            snd_mixer_selem_get_playback_volume(elem, (snd_mixer_selem_channel_id_t)1, &volumetoperc );
+            double calc = ((double)volumetoperc / (double)maxv)*100;
+            *outvol =  (long)calc;
+        }
+        else if(action == AUDIO_VOLUME_SET) {
+            if(*outvol < 0 || *outvol > maxv) // out of bounds
+                return -7;
+            *outvol = (*outvol * (maxv - minv) / (100-1)) + minv;
+            if(snd_mixer_selem_set_playback_volume(elem,  (snd_mixer_selem_channel_id_t)0, *outvol) < 0) {
+                return -8;
+            }
+            if(snd_mixer_selem_set_playback_volume(elem,  (snd_mixer_selem_channel_id_t)1, *outvol) < 0) {
+                return -9;
+            }
+        }
+    }
+    snd_mixer_close(handle);
+    return 0;
+}
+
 
 
 static void handler(int s) {
@@ -275,12 +358,10 @@ void readCommand( int command, uint16_t value, libusb_device_handle *devhandler,
     lpReportBuffer1[2] = command;
 
     usb_state =  writeData(devhandler,lpReportBuffer1);
-    if(usb_state < 0){
-       // syslog (LOG_ERR, " qtrogextdriver usb data write error code: %i ",usb_state );
+    if(usb_state < 0){       
         errorcounter = errorcounter+1;
     }else{
-        errorcounter = 0;
-        //qDebug() << " SENT READ COMMAND " << command << "   value " << QByteArray::fromRawData( (char*)lpReportBuffer1, 8 ).toHex();
+        errorcounter = 0;        
     }
     usb_state = -10000;
     usb_state = readData(devhandler,lpReportBuffer1);
@@ -294,17 +375,15 @@ void readCommand( int command, uint16_t value, libusb_device_handle *devhandler,
             if(checker->contains(  command ))
             {
                 if( checker->value( command ) !=  lpReportBuffer1[3] ){
-                    if(command == 98){
+                    if(command == VOLUME){
 
-                        QStringList arguments;
-                        int rpmPerc = lpReportBuffer1[3];
-                        //amixer set 'Master' 100% unmute
-                        arguments << "set" << "Master" <<QString::number(rpmPerc)+"%" << "unmute" ;
-                        QProcess::startDetached("amixer",arguments);
-                        arguments.clear();
+                        long volumePercent = lpReportBuffer1[3];
+                        audio_volume(AUDIO_VOLUME_SET, &volumePercent);
+                        systemVolumeValue = volumePercent;
 
+                        //перешел на бинд  к альсе напрямую, так удобнее
                     }
-                    else if(command == 4){
+                    else if(command == EDITMODE){
                         if(lpReportBuffer1[3] == 1){
                             editmode = true;
                         }else{
@@ -326,7 +405,7 @@ void readCommand( int command, uint16_t value, libusb_device_handle *devhandler,
 
                         }
 
-                    } //amixer set 'Master' 100% unmute
+                    }
                     qDebug() << " RESP READ COMMAND " << command << "   value " << QByteArray::fromRawData( (char*)lpReportBuffer1, 8 ).toHex();
                 }
             }
@@ -351,20 +430,14 @@ long readFileValue(QString file_path){
 }
 
 
+
 int main(int argc, char *argv[])
 {
 
-    // RESP READ COMMAND  98    value  "01016239ffffffaa"
-    // RESP READ COMMAND 1 98    value  "01016240ffffffaa"
-    // RESP READ COMMAND  98    value  "0101622cffffffaa"
+    snd_mixer_selem_id_alloca(&sid);
+    snd_mixer_selem_id_set_index(sid, mix_index);
+    snd_mixer_selem_id_set_name(sid, mix_name);
 
-    //TO DO
-    /*
-            Я записал куда-то байт, и теперь горит надпись еще и асус, вопрос, откуда и куда, по окончании всех тестов надо перепрошить и сбросить по питанию для тестов
-
-            для полной управляемости и настройки, можно сделать GUI но надо ли? Стоит ли изучить спрос? Но если деать GUI то тогда и управление все можно делать и с нее,
-            тогда будет прикольно и профили делать и все такое, но это долго, если будет спрос, займусь
-    */
 
 
 #ifdef DAEMON
@@ -426,17 +499,32 @@ int main(int argc, char *argv[])
                             writeCommand(CPU_SCALETYPE,10,asusRogBaseUsbDevice, false);
                             writeCommand(DISPLAY_ON_OF,5,asusRogBaseUsbDevice, false);
 
+                            writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);
+
                             checker = new QMap<int,int>;
                             usbhandler = new QTimer();
                             usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
 
-                            writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);
+                            readCommand(VOLUME,0x0000,asusRogBaseUsbDevice);
 
-                            searcheditcommand = 0;
+                            //Добавил синхронизацию звука через задержку в секунду, вполне достаточно
+                            if ( QDateTime::currentSecsSinceEpoch() - volumechecker > 1  ){
+                                audio_volume(AUDIO_VOLUME_GET, &systemVolumeValue);
+                                long curtest = systemVolumeValue;
+                                if(checker->contains(VOLUME)){
+                                    int value = checker->value(VOLUME);
+                                    if( value != (int)curtest ){
+                                         writeCommand(VOLUME,curtest,asusRogBaseUsbDevice, false);
+                                    }
+                                }
+                                volumechecker =  QDateTime::currentSecsSinceEpoch();
+                            }
+
+                            /*searcheditcommand = 0;
 
                             for(searcheditcommand = 0; searcheditcommand < 255; searcheditcommand++){
                                 readCommand(searcheditcommand,0x0000,asusRogBaseUsbDevice); // чтение положения ролика для управления звука, но тогда приложуху надо запускать от текущего юзера а не как демона, стоит ли?
-                            }
+                            }*/
 
                            // таймер выше и проверка ниже сделаны для того, чтобы читать USB быстрее чем писать туда значения, надо еще подумать над EDIT режимом!
 
