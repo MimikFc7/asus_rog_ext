@@ -501,11 +501,13 @@ int main(int argc, char *argv[])
 
                             writeCommand(SETWORKMODE,0xaa,asusRogBaseUsbDevice, false);
 
-                            checker = new QMap<int,int>;
+                            checker = new QMap<int,int>;                           
                             usbhandler = new QTimer();
                             usbhandler->connect( usbhandler, &QTimer::timeout,[=](){
 
+                            readCommand(EDITMODE,0x0000,asusRogBaseUsbDevice);
                             readCommand(VOLUME,0x0000,asusRogBaseUsbDevice);
+                            readCommand(CHA_RPM_PERC3,0x0000,asusRogBaseUsbDevice);
 
                             //Добавил синхронизацию звука через задержку в секунду, вполне достаточно
                             if ( QDateTime::currentSecsSinceEpoch() - volumechecker > 1  ){
